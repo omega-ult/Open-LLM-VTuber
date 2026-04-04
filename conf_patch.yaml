@@ -1,0 +1,30 @@
+# ── conf.yaml 中需要修改 / 新增的部分 ────────────────────────────────
+#
+# 1. 找到 conversation_agent_choice，改为 game_brain_agent
+# 2. 在 agent_settings 下新增 game_brain_agent 段落
+# 3. 其余配置（ASR / TTS / Live2D）保持不动
+#
+# ─────────────────────────────────────────────────────────────────────
+
+system_config:
+  conversation_agent_choice: game_brain_agent   # ← 改这一行
+
+agent_settings:
+
+  # ── 你的游戏大脑配置 ────────────────────────────────────────────
+  game_brain_agent:
+    base_url: "http://localhost:1234/v1"   # LM Studio Local Server
+    model: "qwen2.5-vl-7b-instruct"        # 改成你 LM Studio 里实际的 Model ID
+    temperature: 0.85
+    max_tokens: 400
+    viking_path: "./viking_data"            # OpenViking 数据目录（自动创建）
+    ai_name: "雪音"                         # VTuber 名字，也出现在 display_text
+
+  # ── 原有配置保留不动 ────────────────────────────────────────────
+  basic_memory_agent:
+    llm_provider: "ollama"
+    # ...（原有内容不动）
+
+# ── System Prompt（OLV 原生字段，GameBrainAgent 会在代码里覆盖）────
+# 这里写个简短占位即可，实际人格在 game_brain_agent.py 里的 _PERSONA_CORE
+system_prompt: "你是雪音，一个随性的 AI VTuber。"

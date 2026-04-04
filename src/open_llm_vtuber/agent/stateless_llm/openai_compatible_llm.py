@@ -185,9 +185,13 @@ class AsyncLLM(StatelessLLMInterface):
                 if len(chunk.choices) == 0:
                     logger.info("Empty chunk received")
                     continue
-                elif chunk.choices[0].delta.content is None:
-                    chunk.choices[0].delta.content = ""
-                yield chunk.choices[0].delta.content
+                delta = chunk.choices[0].delta
+                content = delta.content
+                # Some thinking models return an empty content field and put text in
+                # reasoning_content instead. Fall back to it for compatibility.
+                if not content:
+                    content = getattr(delta, "reasoning_content", None) or ""
+                yield content
 
             # If stream ends while still in a tool call, make sure to yield the tool call
             if in_tool_call and accumulated_tool_calls:
@@ -226,6 +230,11 @@ class AsyncLLM(StatelessLLMInterface):
             logger.info(f"Model: {self.model}")
             logger.info(f"Messages: {messages}")
             logger.info(f"temperature: {self.temperature}")
+            # Provide a hint for common 502 errors (wrong base_url or model not loaded)
+            if "502" in str(e):
+                logger.warning(
+                    f"502 Bad Gateway: Check that the model '{self.model}' is loaded in LMStudio at {self.base_url}"
+                )
             yield "Error calling the chat endpoint: Error occurred while generating response. See the logs for details."
 
         finally:

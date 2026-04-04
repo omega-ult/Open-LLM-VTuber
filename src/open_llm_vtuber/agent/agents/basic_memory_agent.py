@@ -271,7 +271,13 @@ class BasicMemoryAgent(AgentInterface):
                 )
 
         if user_content:
-            user_message = {"role": "user", "content": user_content}
+            # If there are no images, use plain string content for better compatibility
+            # with LLM backends that don't support the multimodal list format.
+            if not input_data.images:
+                content_value = text_prompt
+            else:
+                content_value = user_content
+            user_message = {"role": "user", "content": content_value}
             messages.append(user_message)
 
             skip_memory = False

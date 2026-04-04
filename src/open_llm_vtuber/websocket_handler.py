@@ -27,6 +27,11 @@ from .conversations.conversation_handler import (
     handle_group_interrupt,
     handle_individual_interrupt,
 )
+from .conversations.tts_manager import TTSTaskManager
+from .conversations.conversation_utils import (
+    send_conversation_start_signals,
+)
+from .agent.output_types import Actions, DisplayText
 
 
 class MessageType(Enum):
@@ -89,6 +94,7 @@ class WebSocketHandler:
             "raw-audio-data": self._handle_raw_audio_data,
             "text-input": self._handle_conversation_trigger,
             "ai-speak-signal": self._handle_conversation_trigger,
+            "inject-ai-response": self._handle_inject_ai_response,
             "fetch-configs": self._handle_fetch_configs,
             "switch-config": self._handle_config_switch,
             "fetch-backgrounds": self._handle_fetch_backgrounds,
@@ -527,6 +533,69 @@ class WebSocketHandler:
             current_conversation_tasks=self.current_conversation_tasks,
             broadcast_to_group=self.broadcast_to_group,
         )
+
+    async def _handle_inject_ai_response(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        """Handle pre-processed AI responses from external orchestrator (LivOchestrator).
+        Bypasses the LLM agent and goes directly to TTS + Live2D."""
+        context = self.client_contexts.get(client_uid)
+        if not context:
+            logger.warning(f"inject-ai-response: no context for client {client_uid}")
+            return
+
+        text = data.get("text", "")
+        if not text:
+            logger.warning("inject-ai-response: empty text")
+            return
+
+        tts_manager = TTSTaskManager()
+        websocket_send = websocket.send_text
+
+        try:
+            await send_conversation_start_signals(websocket_send)
+
+            # Extract emotion for Live2D
+            expression_list = context.live2d_model.extract_emotion(text)
+            clean_text = context.live2d_model.remove_emotion_keywords(text)
+
+            # Build actions for Live2D
+            actions = Actions(expressions=expression_list if expression_list else None)
+
+            # Build display text
+            display_text = DisplayText(
+                text=clean_text,
+                name=context.character_config.character_name,
+                avatar=context.character_config.avatar,
+            )
+
+            # Queue TTS
+            await tts_manager.speak(
+                tts_text=clean_text,
+                display_text=display_text,
+                actions=actions,
+                live2d_model=context.live2d_model,
+                tts_engine=context.tts_engine,
+                websocket_send=websocket_send,
+            )
+
+            # Wait for TTS completion
+            if tts_manager.task_list:
+                await asyncio.gather(*tts_manager.task_list)
+                await websocket_send(json.dumps({"type": "backend-synth-complete"}))
+
+            await websocket_send(json.dumps({"type": "force-new-message"}))
+
+            chain_end_msg = {"type": "control", "text": "conversation-chain-end"}
+            await websocket_send(json.dumps(chain_end_msg))
+
+        except Exception as e:
+            logger.error(f"Error in inject-ai-response: {e}")
+            await websocket_send(
+                json.dumps({"type": "error", "message": f"inject response error: {str(e)}"})
+            )
+        finally:
+            tts_manager.clear()
 
     async def _handle_fetch_configs(
         self, websocket: WebSocket, client_uid: str, data: WSMessage
