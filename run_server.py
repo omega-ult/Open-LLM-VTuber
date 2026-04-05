@@ -161,6 +161,8 @@ def run(console_log_level: str):
         host=server_config.host,
         port=server_config.port,
         log_level=console_log_level.lower(),
+        ws_ping_interval=10,
+        ws_ping_timeout=120,
     )
 
 
