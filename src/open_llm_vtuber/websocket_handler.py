@@ -538,7 +538,8 @@ class WebSocketHandler:
         self, websocket: WebSocket, client_uid: str, data: WSMessage
     ) -> None:
         """Handle pre-processed AI responses from external orchestrator (LivOchestrator).
-        Bypasses the LLM agent and goes directly to TTS + Live2D."""
+        Bypasses the LLM agent and goes directly to TTS + Live2D.
+        Broadcasts to ALL connected clients (OBS browser, admin page, etc.)."""
         context = self.client_contexts.get(client_uid)
         if not context:
             logger.warning(f"inject-ai-response: no context for client {client_uid}")
@@ -550,10 +551,20 @@ class WebSocketHandler:
             return
 
         tts_manager = TTSTaskManager()
-        websocket_send = websocket.send_text
+
+        # Build a broadcast sender that sends to all connected clients
+        async def broadcast_send(message: str):
+            dead = []
+            for uid, ws in list(self.client_connections.items()):
+                try:
+                    await ws.send_text(message)
+                except Exception:
+                    dead.append(uid)
+            for uid in dead:
+                self.client_connections.pop(uid, None)
 
         try:
-            await send_conversation_start_signals(websocket_send)
+            await send_conversation_start_signals(broadcast_send)
 
             # Extract emotion for Live2D
             expression_list = context.live2d_model.extract_emotion(text)
@@ -569,31 +580,28 @@ class WebSocketHandler:
                 avatar=context.character_config.avatar,
             )
 
-            # Queue TTS
+            # Queue TTS — broadcast to all clients
             await tts_manager.speak(
                 tts_text=clean_text,
                 display_text=display_text,
                 actions=actions,
                 live2d_model=context.live2d_model,
                 tts_engine=context.tts_engine,
-                websocket_send=websocket_send,
+                websocket_send=broadcast_send,
             )
 
             # Wait for TTS completion
             if tts_manager.task_list:
                 await asyncio.gather(*tts_manager.task_list)
-                await websocket_send(json.dumps({"type": "backend-synth-complete"}))
+                await broadcast_send(json.dumps({"type": "backend-synth-complete"}))
 
-            await websocket_send(json.dumps({"type": "force-new-message"}))
+            await broadcast_send(json.dumps({"type": "force-new-message"}))
 
             chain_end_msg = {"type": "control", "text": "conversation-chain-end"}
-            await websocket_send(json.dumps(chain_end_msg))
+            await broadcast_send(json.dumps(chain_end_msg))
 
         except Exception as e:
             logger.error(f"Error in inject-ai-response: {e}")
-            await websocket_send(
-                json.dumps({"type": "error", "message": f"inject response error: {str(e)}"})
-            )
         finally:
             tts_manager.clear()
 
