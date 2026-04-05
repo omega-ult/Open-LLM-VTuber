@@ -37,9 +37,9 @@ class TTSEngine(TTSInterface):
         # Prepare the data for the POST request
         data = {
             "text": cleaned_text,
-            "text_lang": self.text_lang,
-            "ref_audio_path": self.ref_audio_path,
-            "prompt_lang": self.prompt_lang,
+            "text_language": self.text_lang,
+            "refer_wav_path": self.ref_audio_path,
+            "prompt_language": self.prompt_lang,
             "prompt_text": self.prompt_text,
             "text_split_method": self.text_split_method,
             "batch_size": self.batch_size,

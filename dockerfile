@@ -1,22 +1,25 @@
-FROM python:3.10-slim
+FROM docker.m.daocloud.io/library/python:3.10-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     UV_LINK_MODE=copy \
+    PIP_INDEX_URL=https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple \
     CONFIG_FILE=/app/conf/conf.yaml
 
 WORKDIR /app
 
-# Base dependencies
-RUN apt-get update -o Acquire::Retries=5 \
+# Use TUNA mirror for apt
+RUN sed -i 's|http://deb.debian.org|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+    sed -i 's|http://deb.debian.org|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list 2>/dev/null; \
+    apt-get update -o Acquire::Retries=5 \
  && apt-get install -y --no-install-recommends \
       ffmpeg git curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+# Install uv via pip (avoids needing ghcr.io)
+RUN pip install uv --index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 
 # Install deps (cache-friendly)
 COPY pyproject.toml uv.lock ./
