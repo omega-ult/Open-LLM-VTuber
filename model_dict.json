@@ -2,7 +2,7 @@
     {
         "name": "mao_pro",
         "description": "",
-        "url": "/live2d-models/mao_pro/runtime/mao_pro.model3.json",
+        "url": "/live2d-models/mao_pro/mao_pro.model3.json",
         "kScale": 0.5,
         "initialXshift": 0,
         "initialYshift": 0,
@@ -17,6 +17,43 @@
             "smirk": 3,
             "sadness": 1,
             "surprise": 3
+        },
+        "motionGroups": ["Talk", "Idle"],
+        "motionDescriptions": {
+            "Talk": "说话动作，适合普通对话、陈述"
+        },
+        "tapMotions": {
+            "HitAreaHead": {
+                "": 1
+            },
+            "HitAreaBody": {
+                "": 1
+            }
+        }
+    },
+    {
+        "name": "shizuku",
+        "description": "",
+        "url": "/live2d-models/shizuku/shizuku.model3.json",
+        "kScale": 0.5,
+        "initialXshift": 0,
+        "initialYshift": 0,
+        "kXOffset": 1150,
+        "idleMotionGroupName": "Idle",
+        "emotionMap": {
+            "neutral": 0,
+            "anger": 1,
+            "disgust": 1,
+            "fear": 1,
+            "joy": 3,
+            "sadness": 1,
+            "surprise": 3
+        },
+        "motionGroups": ["FlickUp", "Tap", "Flick3", "Idle"],
+        "motionDescriptions": {
+            "FlickUp": "轻快抬头/甩头，适合惊喜、打招呼、开心回应",
+            "Tap": "轻拍动作，适合不满、提醒、否定、嗔怪",
+            "Flick3": "活泼的多段挥手，适合兴奋、大笑、激动"
         },
         "tapMotions": {
             "HitAreaHead": {

@@ -2,7 +2,7 @@
 character_config:
   conf_name: "en_nuke_debator"
   conf_uid: "en_nuke_debator-001"
-  live2d_model_name: "shizuku-local"
+  live2d_model_name: "shizuku"
   persona_prompt: |
     You are Mili, a seasoned and aggressive debator, a former US senator. You are debating (public debate) with the user over the topic of nuclear weapons.
 
