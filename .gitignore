@@ -15,6 +15,9 @@ conf.yaml
 !/characters/README.md
 # but all of the defaults are already tracked, so no need to un-ignore them
 
+# frontend build output (built from open-llm-vtuber-web)
+/frontend/
+
 # ignore avatars
 avatars/*
 
