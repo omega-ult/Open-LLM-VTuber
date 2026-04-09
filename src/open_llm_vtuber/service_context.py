@@ -315,6 +315,17 @@ class ServiceContext:
         logger.info(f"Initializing Live2D: {live2d_model_name}")
         try:
             self.live2d_model = Live2dModel(live2d_model_name)
+            # Ensure model_info includes motionIndexMap from model_dict.json
+            if hasattr(self.live2d_model, 'model_info') and 'motionIndexMap' not in self.live2d_model.model_info:
+                import json as _json
+                try:
+                    with open(self.live2d_model.model_dict_path, 'r', encoding='utf-8') as f:
+                        all_models = _json.load(f)
+                    matched = next((m for m in all_models if m['name'] == live2d_model_name), None)
+                    if matched and 'motionIndexMap' in matched:
+                        self.live2d_model.model_info['motionIndexMap'] = matched['motionIndexMap']
+                except Exception:
+                    pass
             self.character_config.live2d_model_name = live2d_model_name
         except Exception as e:
             logger.critical(f"Error initializing Live2D: {e}")

@@ -18,9 +18,24 @@
             "sadness": 1,
             "surprise": 3
         },
-        "motionGroups": ["Talk", "Idle"],
+        "motionGroups": ["Talk", "Greet", "Spin", "Pose", "Hearts", "Magic", "Rabbit", "Idle"],
         "motionDescriptions": {
-            "Talk": "说话动作，适合普通对话、陈述"
+            "Talk": "普通对话动作，适合陈述、解说",
+            "Greet": "挥手打招呼，适合问候、开心回应",
+            "Spin": "旋转展示，适合兴奋、得意",
+            "Pose": "戏剧性 pose，适合强调、惊讶",
+            "Hearts": "爱心特效，适合温柔、感谢",
+            "Magic": "彩虹魔法秀，适合惊叹、炫耀",
+            "Rabbit": "召唤兔子，适合可爱、神秘"
+        },
+        "motionIndexMap": {
+            "Talk":  {"group": "", "index": -1},
+            "Greet": {"group": "", "index": 0},
+            "Spin":  {"group": "", "index": 1},
+            "Pose":  {"group": "", "index": 2},
+            "Hearts": {"group": "", "index": 3},
+            "Magic": {"group": "", "index": 4},
+            "Rabbit": {"group": "", "index": 5}
         },
         "tapMotions": {
             "HitAreaHead": {

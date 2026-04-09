@@ -10,6 +10,7 @@ class Actions:
     expressions: Optional[List[str] | List[int]] = None
     pictures: Optional[List[str]] = None
     sounds: Optional[List[str]] = None
+    motion: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Convert Actions object to a dictionary for JSON serialization"""

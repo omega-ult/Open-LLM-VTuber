@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Motion Test Panel</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--border:#30363d;--text:#c9d1d9;--dim:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--orange:#d29922;--purple:#bc8cff;--mono:'Cascadia Code','Fira Code','Consolas',monospace}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:13px;padding:16px}
+
+h1{font-size:18px;margin-bottom:8px}
+.subtitle{font-size:12px;color:var(--dim);margin-bottom:16px}
+
+/* Connection bar */
+.conn-bar{display:flex;gap:8px;align-items:center;padding:8px 12px;background:var(--panel);border:1px solid var(--border);border-radius:6px;margin-bottom:16px}
+.conn-bar input{background:#21262d;border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px;font-family:var(--mono);width:280px}
+.conn-bar .btn{background:#21262d;border:1px solid var(--border);color:var(--dim);padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer}
+.conn-bar .btn:hover{border-color:var(--accent);color:var(--accent)}
+.conn-bar .btn.on{background:var(--green);color:#000;border-color:var(--green)}
+.conn-bar .btn.off{background:var(--red);color:#fff;border-color:var(--red)}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
+.conn-dot.on{background:var(--green)}
+#status{font-size:11px;color:var(--dim)}
+
+/* Sections */
+.section{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px}
+.section h2{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);margin-bottom:8px}
+.section h3{font-size:10px;color:var(--dim);margin-bottom:6px;margin-top:10px}
+
+/* Motion grid */
+.motion-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.motion-btn{background:#21262d;border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-family:var(--mono);text-align:center;min-width:90px;transition:all .15s}
+.motion-btn:hover{border-color:var(--accent);background:#1c2128}
+.motion-btn:active{background:var(--accent);color:#000}
+.motion-btn .name{font-weight:600;display:block}
+.motion-btn .desc{font-size:9px;color:var(--dim);display:block;margin-top:2px}
+
+/* Expression grid */
+.expr-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.expr-btn{background:#21262d;border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-family:var(--mono);transition:all .15s}
+.expr-btn:hover{border-color:var(--accent)}
+.expr-btn:active{background:var(--accent);color:#000}
+
+/* Text inject */
+.text-row{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
+.text-row textarea{flex:1;background:#21262d;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:4px;font-size:12px;font-family:var(--mono);resize:vertical;min-height:60px}
+.text-row .btn{background:var(--accent);color:#000;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;align-self:stretch}
+.text-row .btn:hover{background:#79b8ff}
+
+/* Log */
+.log{background:#0d1117;border:1px solid var(--border);border-radius:4px;padding:8px;max-height:300px;overflow-y:auto;font-family:var(--mono);font-size:11px}
+.log-entry{padding:2px 0;border-bottom:1px solid rgba(48,54,61,.3)}
+.log-time{color:var(--dim)}
+.log-ok{color:var(--green)}
+.log-err{color:var(--red)}
+.log-info{color:var(--accent)}
+
+/* Model info */
+.model-info{font-size:11px;color:var(--dim);font-family:var(--mono);background:#0d1117;border-radius:4px;padding:8px;max-height:200px;overflow-y:auto}
+</style>
+</head>
+<body>
+
+<h1>Motion Test Panel</h1>
+<div class="subtitle">直接测试 Live2D 动作、表情和 inject-ai-response</div>
+
+<div class="conn-bar">
+    <div class="conn-dot" id="ws-dot"></div>
+    <input id="ws-url" value="ws://127.0.0.1:12393/client-ws" placeholder="ws://host:port/client-ws">
+    <button class="btn" id="ws-btn" onclick="toggleWs()">Connect</button>
+    <span id="status">未连接</span>
+</div>
+
+<!-- Model info -->
+<div class="section">
+    <h2>Model Info</h2>
+    <div class="model-info" id="model-info">等待连接...</div>
+</div>
+
+<!-- Inject with motion -->
+<div class="section">
+    <h2>Inject AI Response (with motion)</h2>
+    <div class="text-row">
+        <textarea id="inject-text" placeholder="输入回复文本，用 [joy] 标记情绪">你好呀~</textarea>
+        <button class="btn" onclick="sendInject()">Send</button>
+    </div>
+    <h3>快捷动作 + 文本</h3>
+    <div class="motion-grid" id="quick-motion-grid"></div>
+</div>
+
+<!-- Direct motion test -->
+<div class="section">
+    <h2>Direct Motion (via inject-ai-response)</h2>
+    <div class="motion-grid" id="motion-grid">等待模型加载...</div>
+</div>
+
+<!-- Expression test -->
+<div class="section">
+    <h2>Expression Test</h2>
+    <div class="expr-grid" id="expr-grid">等待模型加载...</div>
+</div>
+
+<!-- Log -->
+<div class="section">
+    <h2>Log</h2>
+    <div class="log" id="log"></div>
+</div>
+
+<script>
+let ws = null;
+let connected = false;
+let modelInfo = null;
+let motionDescriptions = {};
+
+// ── WS connection ──
+function toggleWs() {
+    if (connected) {
+        ws?.close();
+        return;
+    }
+    const url = document.getElementById('ws-url').value;
+    ws = new WebSocket(url);
+    ws.onopen = () => {
+        connected = true;
+        document.getElementById('ws-dot').className = 'conn-dot on';
+        document.getElementById('ws-btn').textContent = 'Disconnect';
+        document.getElementById('ws-btn').className = 'btn on';
+        document.getElementById('status').textContent = 'Connected';
+        document.getElementById('status').style.color = 'var(--green)';
+        log('info', 'WebSocket connected');
+    };
+    ws.onmessage = (e) => {
+        try {
+            const data = JSON.parse(e.data);
+            handleWsMessage(data);
+        } catch (_) {}
+    };
+    ws.onclose = () => {
+        connected = false;
+        document.getElementById('ws-dot').className = 'conn-dot';
+        document.getElementById('ws-btn').textContent = 'Connect';
+        document.getElementById('ws-btn').className = 'btn';
+        document.getElementById('status').textContent = 'Disconnected';
+        document.getElementById('status').style.color = 'var(--red)';
+        log('info', 'WebSocket disconnected');
+    };
+    ws.onerror = () => {
+        log('err', 'WebSocket error');
+    };
+}
+
+function handleWsMessage(data) {
+    if (data.type === 'set-model-and-conf') {
+        modelInfo = data.model_info || {};
+        renderModelInfo();
+        renderMotionGrid();
+        renderExprGrid();
+        renderQuickMotionGrid();
+    }
+}
+
+// ── Render model info ──
+function renderModelInfo() {
+    const el = document.getElementById('model-info');
+    const info = {
+        name: modelInfo.name,
+        url: modelInfo.url,
+        motionGroups: modelInfo.motionGroups || [],
+        motionIndexMap: modelInfo.motionIndexMap || {},
+        emotionMap: modelInfo.emotionMap || {},
+    };
+    el.textContent = JSON.stringify(info, null, 2);
+}
+
+// ── Render motion grid ──
+function renderMotionGrid() {
+    const el = document.getElementById('motion-grid');
+    const motionMap = modelInfo.motionIndexMap || {};
+    const desc = modelInfo.motionDescriptions || {};
+    const keys = Object.keys(motionMap);
+    if (!keys.length) {
+        el.innerHTML = '<span style="color:var(--dim)">No motionIndexMap found in model info</span>';
+        return;
+    }
+    el.innerHTML = keys.map(name => {
+        const cfg = motionMap[name];
+        const d = desc[name] || '';
+        return `<div class="motion-btn" onclick="sendMotion('${name}')">
+            <span class="name">${esc(name)}</span>
+            <span class="desc">${cfg.group || '""'}[${cfg.index}]</span>
+            ${d ? `<span class="desc">${esc(d)}</span>` : ''}
+        </div>`;
+    }).join('');
+}
+
+// ── Render quick motion + text ──
+function renderQuickMotionGrid() {
+    const el = document.getElementById('quick-motion-grid');
+    const desc = modelInfo.motionDescriptions || {};
+    const names = Object.keys(desc).filter(n => n !== 'Talk' && n !== 'Idle');
+    if (!names.length) {
+        el.innerHTML = '<span style="color:var(--dim)">No motions</span>';
+        return;
+    }
+    const samples = {
+        Greet: '你好呀~欢迎来到直播间！',
+        Spin: '哈哈，我今天心情超好！',
+        Pose: '看我这个姿势，帅不帅？',
+        Hearts: '谢谢你的支持呀~爱你哦！',
+        Magic: '让我给你变个魔术！',
+        Rabbit: '猜猜我会召唤什么？',
+    };
+    el.innerHTML = names.map(name => {
+        const text = samples[name] || `（${name} 动作测试）`;
+        return `<div class="motion-btn" onclick="sendQuickMotion('${name}', '${text.replace(/'/g, "\\'")}')">
+            <span class="name">${esc(name)}</span>
+            <span class="desc">${esc(desc[name] || '')}</span>
+        </div>`;
+    }).join('');
+}
+
+// ── Render expression grid ──
+function renderExprGrid() {
+    const el = document.getElementById('expr-grid');
+    const emoMap = modelInfo.emotionMap || {};
+    const keys = Object.keys(emoMap);
+    if (!keys.length) {
+        el.innerHTML = '<span style="color:var(--dim)">No emotionMap</span>';
+        return;
+    }
+    el.innerHTML = keys.map(name => {
+        const idx = emoMap[name];
+        return `<div class="expr-btn" onclick="sendExpression('${name}', ${idx})">${esc(name)} [${idx}]</div>`;
+    }).join('');
+}
+
+// ── Send functions ──
+function sendInject(text, motion) {
+    if (!connected || !ws) { log('err', 'Not connected'); return; }
+    text = text || document.getElementById('inject-text').value;
+    if (!text) return;
+    const payload = { type: 'inject-ai-response', text, emotion: 'neutral' };
+    if (motion) payload.motion = motion;
+    ws.send(JSON.stringify(payload));
+    log('ok', `inject: "${text.slice(0, 40)}${motion ? ` (motion=${motion})` : ''}`);
+}
+
+function sendMotion(name) {
+    if (!connected || !ws) { log('err', 'Not connected'); return; }
+    const text = `（测试 ${name} 动作）`;
+    const payload = { type: 'inject-ai-response', text, emotion: 'neutral', motion: name };
+    ws.send(JSON.stringify(payload));
+    log('ok', `motion: ${name}`);
+}
+
+function sendQuickMotion(name, text) {
+    sendInject(text, name);
+}
+
+function sendExpression(name, index) {
+    if (!connected || !ws) { log('err', 'Not connected'); return; }
+    const text = `[${name}] 表情测试`;
+    const payload = { type: 'inject-ai-response', text, emotion: name };
+    ws.send(JSON.stringify(payload));
+    log('ok', `expression: ${name} (${index})`);
+}
+
+// ── Log ──
+function log(type, msg) {
+    const el = document.getElementById('log');
+    const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const cls = type === 'ok' ? 'log-ok' : type === 'err' ? 'log-err' : 'log-info';
+    el.insertAdjacentHTML('beforeend', `<div class="log-entry"><span class="log-time">${t}</span> <span class="${cls}">${esc(msg)}</span></div>`);
+    el.scrollTop = el.scrollHeight;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+// Auto-connect on load
+window.addEventListener('DOMContentLoaded', () => {
+    // Detect if accessed from VTuber server
+    const loc = window.location;
+    const wsProto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+    document.getElementById('ws-url').value = `${wsProto}//${loc.host}/client-ws`;
+    toggleWs();
+});
+</script>
+</body>
+</html>

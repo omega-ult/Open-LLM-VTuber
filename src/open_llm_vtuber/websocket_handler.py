@@ -546,6 +546,7 @@ class WebSocketHandler:
             return
 
         text = data.get("text", "")
+        motion = data.get("motion")  # Motion name from LivOchestrator
         if not text:
             logger.warning("inject-ai-response: empty text")
             return
@@ -571,7 +572,7 @@ class WebSocketHandler:
             clean_text = context.live2d_model.remove_emotion_keywords(text)
 
             # Build actions for Live2D
-            actions = Actions(expressions=expression_list if expression_list else None)
+            actions = Actions(expressions=expression_list if expression_list else None, motion=motion)
 
             # Build display text
             display_text = DisplayText(

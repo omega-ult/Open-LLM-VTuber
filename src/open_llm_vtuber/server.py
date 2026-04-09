@@ -141,6 +141,12 @@ class WebSocketServer:
             name="web_tool",
         )
 
+        # Mount test panel HTML (direct access)
+        @self.app.get("/test-motion")
+        async def test_motion_panel():
+            from starlette.responses import FileResponse as _FileResponse
+            return _FileResponse("static/test_motion.html")
+
         # Mount main frontend last (as catch-all)
         self.app.mount(
             "/",
