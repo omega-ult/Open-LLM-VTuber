@@ -680,6 +680,39 @@ class CartesiaTTSConfig(I18nMixin):
     }
 
 
+class CosyVoiceApiTTSConfig(I18nMixin):
+    """Configuration for CosyVoice FastAPI TTS (zero-shot mode)."""
+
+    api_url: str = Field("http://127.0.0.1:50000", alias="api_url")
+    prompt_wav: str = Field(..., alias="prompt_wav")
+    prompt_text: str = Field(..., alias="prompt_text")
+    sample_rate: int = Field(22050, alias="sample_rate")
+    speed: float = Field(1.0, alias="speed")
+
+    DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
+        "api_url": Description(
+            en="URL of the CosyVoice FastAPI endpoint",
+            zh="CosyVoice FastAPI 端点的 URL",
+        ),
+        "prompt_wav": Description(
+            en="Path to the prompt WAV file for voice cloning",
+            zh="用于声音克隆的参考音频文件路径",
+        ),
+        "prompt_text": Description(
+            en="Text corresponding to the prompt audio",
+            zh="参考音频对应的文本",
+        ),
+        "sample_rate": Description(
+            en="Audio sample rate in Hz (default: 22050)",
+            zh="音频采样率（默认：22050）",
+        ),
+        "speed": Description(
+            en="Speech speed multiplier (default: 1.0)",
+            zh="语速倍数（默认：1.0）",
+        ),
+    }
+
+
 class TTSConfig(I18nMixin):
     """Configuration for Text-to-Speech."""
 
@@ -689,6 +722,7 @@ class TTSConfig(I18nMixin):
         "edge_tts",
         "cosyvoice_tts",
         "cosyvoice2_tts",
+        "cosyvoice_api_tts",
         "melo_tts",
         "coqui_tts",
         "x_tts",
@@ -709,6 +743,7 @@ class TTSConfig(I18nMixin):
     edge_tts: Optional[EdgeTTSConfig] = Field(None, alias="edge_tts")
     cosyvoice_tts: Optional[CosyvoiceTTSConfig] = Field(None, alias="cosyvoice_tts")
     cosyvoice2_tts: Optional[Cosyvoice2TTSConfig] = Field(None, alias="cosyvoice2_tts")
+    cosyvoice_api_tts: Optional[CosyVoiceApiTTSConfig] = Field(None, alias="cosyvoice_api_tts")
     melo_tts: Optional[MeloTTSConfig] = Field(None, alias="melo_tts")
     coqui_tts: Optional[CoquiTTSConfig] = Field(None, alias="coqui_tts")
     x_tts: Optional[XTTSConfig] = Field(None, alias="x_tts")
@@ -739,6 +774,10 @@ class TTSConfig(I18nMixin):
         ),
         "cosyvoice2_tts": Description(
             en="Configuration for Cosyvoice2 TTS", zh="Cosyvoice2 TTS 配置"
+        ),
+        "cosyvoice_api_tts": Description(
+            en="Configuration for CosyVoice FastAPI TTS (zero-shot)",
+            zh="CosyVoice FastAPI TTS 配置（零样本模式）",
         ),
         "melo_tts": Description(en="Configuration for Melo TTS", zh="Melo TTS 配置"),
         "coqui_tts": Description(en="Configuration for Coqui TTS", zh="Coqui TTS 配置"),
@@ -786,6 +825,8 @@ class TTSConfig(I18nMixin):
             values.cosyvoice_tts.model_validate(values.cosyvoice_tts.model_dump())
         elif tts_model == "cosyvoice2_tts" and values.cosyvoice2_tts is not None:
             values.cosyvoice2_tts.model_validate(values.cosyvoice2_tts.model_dump())
+        elif tts_model == "cosyvoice_api_tts" and values.cosyvoice_api_tts is not None:
+            values.cosyvoice_api_tts.model_validate(values.cosyvoice_api_tts.model_dump())
         elif tts_model == "melo_tts" and values.melo_tts is not None:
             values.melo_tts.model_validate(values.melo_tts.model_dump())
         elif tts_model == "coqui_tts" and values.coqui_tts is not None:

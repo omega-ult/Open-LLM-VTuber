@@ -74,6 +74,16 @@ class TTSFactory:
                 speaker_wav=kwargs.get("speaker_wav"),
                 language=kwargs.get("language"),
             )
+        elif engine_type == "cosyvoice_api_tts":
+            from .cosyvoice_api_tts import TTSEngine as CosyVoiceApiTTSEngine
+
+            return CosyVoiceApiTTSEngine(
+                api_url=kwargs.get("api_url"),
+                prompt_wav=kwargs.get("prompt_wav"),
+                prompt_text=kwargs.get("prompt_text"),
+                sample_rate=kwargs.get("sample_rate"),
+                speed=kwargs.get("speed"),
+            )
         elif engine_type == "gpt_sovits_tts":
             from .gpt_sovits_tts import TTSEngine as GSVEngine
 
