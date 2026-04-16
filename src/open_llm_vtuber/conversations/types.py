@@ -19,6 +19,8 @@ class AudioPayload(TypedDict):
     display_text: Optional[DisplayText]
     actions: Optional[Actions]
     forwarded: Optional[bool]
+    request_id: Optional[str]
+    target_client_uid: Optional[str]
 
 
 @dataclass

@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Callable, TypedDict
 from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
 import json
+import time
 from enum import Enum
 import numpy as np
 from loguru import logger
@@ -61,6 +62,8 @@ class WSMessage(TypedDict, total=False):
     history_uid: Optional[str]
     file: Optional[str]
     display_text: Optional[dict]
+    request_id: Optional[str]
+    target_client_uid: Optional[str]
 
 
 class WebSocketHandler:
@@ -72,8 +75,10 @@ class WebSocketHandler:
         self.client_contexts: Dict[str, ServiceContext] = {}
         self.chat_group_manager = ChatGroupManager()
         self.current_conversation_tasks: Dict[str, Optional[asyncio.Task]] = {}
-        self.default_context_cache = default_context_cache
+        sdddddlf.default_context_cache = default_context_cache
         self.received_data_buffers: Dict[str, np.ndarray] = {}
+        self._last_audio_play_client_uid: Optional[str] = None
+        self._last_audio_play_ts: float = 0.0
 
         # Message handlers mapping
         self._message_handlers = self._init_message_handlers()
@@ -265,6 +270,37 @@ class WebSocketHandler:
             if msg_type != "frontend-playback-complete":
                 logger.warning(f"Unknown message type: {msg_type}")
 
+    def _resolve_target_client_uid(self, requested_uid: Optional[str], fallback_uid: str) -> str:
+        # If requester points to itself but we know a recent playback client, prefer playback client.
+        if (
+            requested_uid
+            and requested_uid == fallback_uid
+            and self._last_audio_play_client_uid
+            and self._last_audio_play_client_uid in self.client_connections
+        ):
+            return self._last_audio_play_client_uid
+
+        # Prefer explicitly requested online uid
+        if requested_uid and requested_uid in self.client_connections:
+            return requested_uid
+
+        # Prefer most recently active playback client
+        if (
+            self._last_audio_play_client_uid
+            and self._last_audio_play_client_uid in self.client_connections
+        ):
+            return self._last_audio_play_client_uid
+
+        # Fallback to requester if online
+        if fallback_uid in self.client_connections:
+            return fallback_uid
+
+        # Last resort: any connected client
+        for uid in self.client_connections.keys():
+            return uid
+
+        return fallback_uid
+
     async def _handle_group_operation(
         self, websocket: WebSocket, client_uid: str, data: dict
     ) -> None:
@@ -283,7 +319,7 @@ class WebSocketHandler:
             send_group_update=self.send_group_update,
         )
 
-    async def handle_disconnect(self, client_uid: str) -> None:
+    async def handle_client_disconnect(self, client_uid: str):
         """Handle client disconnection"""
         group = self.chat_group_manager.get_client_group(client_uid)
         if group:
@@ -303,6 +339,11 @@ class WebSocketHandler:
             send_group_update=self.send_group_update,
         )
 
+        # Call context close to clean up resources (e.g., MCPClient)
+        context = self.client_contexts.get(client_uid)
+        if context:
+            await context.close()
+
         # Clean up other client data
         self.client_connections.pop(client_uid, None)
         self.client_contexts.pop(client_uid, None)
@@ -313,13 +354,12 @@ class WebSocketHandler:
                 task.cancel()
             self.current_conversation_tasks.pop(client_uid, None)
 
-        # Call context close to clean up resources (e.g., MCPClient)
-        context = self.client_contexts.get(client_uid)
-        if context:
-            await context.close()
-
         logger.info(f"Client {client_uid} disconnected")
         message_handler.cleanup_client(client_uid)
+
+    async def handle_disconnect(self, client_uid: str):
+        """Backward-compatible disconnect entrypoint for routes."""
+        await self.handle_client_disconnect(client_uid)
 
     async def _cleanup_failed_connection(self, client_uid: str) -> None:
         """Clean up failed connection data"""
@@ -547,6 +587,16 @@ class WebSocketHandler:
 
         text = data.get("text", "")
         motion = data.get("motion")  # Motion name from LivOchestrator
+        request_id = str(data.get("request_id") or f"inject-{client_uid}-{int(asyncio.get_running_loop().time() * 1000)}")
+        requested_target_uid = data.get("target_client_uid")
+        target_client_uid = self._resolve_target_client_uid(
+            str(requested_target_uid) if requested_target_uid else None,
+            fallback_uid=client_uid,
+        )
+        logger.info(
+            f"inject-ai-response routing: request_id={request_id} "
+            f"requested_target={requested_target_uid or '-'} resolved_target={target_client_uid}"
+        )
         if not text:
             logger.warning("inject-ai-response: empty text")
             return
@@ -564,8 +614,21 @@ class WebSocketHandler:
             for uid in dead:
                 self.client_connections.pop(uid, None)
 
+        completion_status = "completed"
+        completion_source = "frontend-playback-complete"
+        completion_reason = ""
+
         try:
-            await send_conversation_start_signals(broadcast_send)
+            await broadcast_send(
+                json.dumps(
+                    {
+                        "type": "control",
+                        "text": "conversation-chain-start",
+                        "request_id": request_id,
+                        "target_client_uid": target_client_uid,
+                    }
+                )
+            )
 
             # Extract emotion for Live2D
             expression_list = context.live2d_model.extract_emotion(text)
@@ -589,21 +652,63 @@ class WebSocketHandler:
                 live2d_model=context.live2d_model,
                 tts_engine=context.tts_engine,
                 websocket_send=broadcast_send,
+                request_id=request_id,
+                target_client_uid=target_client_uid,
             )
 
             # Wait for TTS completion
             if tts_manager.task_list:
                 await asyncio.gather(*tts_manager.task_list)
-                await broadcast_send(json.dumps({"type": "backend-synth-complete"}))
+                await broadcast_send(
+                    json.dumps(
+                        {
+                            "type": "backend-synth-complete",
+                            "request_id": request_id,
+                            "target_client_uid": target_client_uid,
+                        }
+                    )
+                )
 
             await broadcast_send(json.dumps({"type": "force-new-message"}))
 
-            chain_end_msg = {"type": "control", "text": "conversation-chain-end"}
+            chain_end_msg = {
+                "type": "control",
+                "text": "conversation-chain-end",
+                "request_id": request_id,
+                "target_client_uid": target_client_uid,
+            }
             await broadcast_send(json.dumps(chain_end_msg))
 
+            response = await message_handler.wait_for_response(
+                target_client_uid,
+                "frontend-playback-complete",
+                request_id=request_id,
+                timeout=45.0,
+            )
+            if not response:
+                completion_status = "timeout"
+                completion_source = "server-timeout"
+                completion_reason = "frontend-playback-complete timeout"
+
         except Exception as e:
+            completion_status = "error"
+            completion_source = "server-exception"
+            completion_reason = str(e)
             logger.error(f"Error in inject-ai-response: {e}")
         finally:
+            completion_payload = {
+                "type": "inject-ai-response-complete",
+                "request_id": request_id,
+                "target_client_uid": target_client_uid,
+                "status": completion_status,
+                "source": completion_source,
+            }
+            if completion_reason:
+                completion_payload["reason"] = completion_reason
+            try:
+                await websocket.send_text(json.dumps(completion_payload))
+            except Exception as send_err:
+                logger.warning(f"inject-ai-response-complete send failed: {send_err}")
             tts_manager.clear()
 
     async def _handle_fetch_configs(
@@ -640,6 +745,8 @@ class WebSocketHandler:
         """
         Handle audio playback start notification
         """
+        self._last_audio_play_client_uid = client_uid
+        self._last_audio_play_ts = time.time()
         group_members = self.chat_group_manager.get_group_members(client_uid)
         if len(group_members) > 1:
             display_text = data.get("display_text")

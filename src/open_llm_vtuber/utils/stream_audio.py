@@ -30,6 +30,8 @@ def prepare_audio_payload(
     display_text: DisplayText = None,
     actions: Actions = None,
     forwarded: bool = False,
+    request_id: str | None = None,
+    target_client_uid: str | None = None,
 ) -> dict[str, any]:
     """
     Prepares the audio payload for sending to a broadcast endpoint.
@@ -49,7 +51,7 @@ def prepare_audio_payload(
 
     if not audio_path:
         # Return payload for silent display
-        return {
+        payload = {
             "type": "audio",
             "audio": None,
             "volumes": [],
@@ -58,6 +60,11 @@ def prepare_audio_payload(
             "actions": actions.to_dict() if actions else None,
             "forwarded": forwarded,
         }
+        if request_id:
+            payload["request_id"] = request_id
+        if target_client_uid:
+            payload["target_client_uid"] = target_client_uid
+        return payload
 
     try:
         audio = AudioSegment.from_file(audio_path)
@@ -78,6 +85,10 @@ def prepare_audio_payload(
         "actions": actions.to_dict() if actions else None,
         "forwarded": forwarded,
     }
+    if request_id:
+        payload["request_id"] = request_id
+    if target_client_uid:
+        payload["target_client_uid"] = target_client_uid
 
     return payload
 
