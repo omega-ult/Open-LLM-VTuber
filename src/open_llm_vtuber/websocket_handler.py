@@ -75,7 +75,7 @@ class WebSocketHandler:
         self.client_contexts: Dict[str, ServiceContext] = {}
         self.chat_group_manager = ChatGroupManager()
         self.current_conversation_tasks: Dict[str, Optional[asyncio.Task]] = {}
-        sdddddlf.default_context_cache = default_context_cache
+        self.default_context_cache = default_context_cache
         self.received_data_buffers: Dict[str, np.ndarray] = {}
         self._last_audio_play_client_uid: Optional[str] = None
         self._last_audio_play_ts: float = 0.0
