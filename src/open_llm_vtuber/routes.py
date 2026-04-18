@@ -31,7 +31,7 @@ def _require_admin_token(
         raise HTTPException(status_code=403, detail="Invalid admin token")
 
 
-def init_client_ws_route(default_context_cache: ServiceContext) -> APIRouter:
+def init_client_ws_route(default_context_cache: ServiceContext) -> tuple[APIRouter, WebSocketHandler]:
     """
     Create and return API routes for handling the `/client-ws` WebSocket connections.
 
@@ -44,7 +44,6 @@ def init_client_ws_route(default_context_cache: ServiceContext) -> APIRouter:
 
     router = APIRouter()
     ws_handler = WebSocketHandler(default_context_cache)
-    router.state.ws_handler = ws_handler
 
     @router.websocket("/client-ws")
     async def websocket_endpoint(websocket: WebSocket):
@@ -62,7 +61,7 @@ def init_client_ws_route(default_context_cache: ServiceContext) -> APIRouter:
             await ws_handler.handle_disconnect(client_uid)
             raise
 
-    return router
+    return router, ws_handler
 
 
 def init_proxy_route(server_url: str) -> APIRouter:
