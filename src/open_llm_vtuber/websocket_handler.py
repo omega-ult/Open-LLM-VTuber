@@ -640,7 +640,25 @@ class WebSocketHandler:
     ) -> None:
         """Handle pre-processed AI responses from external orchestrator (LivOchestrator).
         Bypasses the LLM agent and goes directly to TTS + Live2D.
-        Broadcasts to ALL connected clients (OBS browser, admin page, etc.)."""
+        Broadcasts to ALL connected clients (OBS browser, admin page, etc.).
+
+        Requires admin_token for authorization when OLV_ADMIN_TOKEN is set.
+        """
+        # Token validation for inject-ai-response
+        token = data.get("admin_token")
+        if not self._is_admin_token_valid(token):
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "type": "error",
+                        "code": "UNAUTHORIZED",
+                        "message": "Invalid or missing admin token for inject-ai-response",
+                    }
+                )
+            )
+            logger.warning(f"inject-ai-response rejected: invalid token from client {client_uid}")
+            return
+
         context = self.client_contexts.get(client_uid)
         if not context:
             logger.warning(f"inject-ai-response: no context for client {client_uid}")
