@@ -3,13 +3,32 @@ import json
 from uuid import uuid4
 import numpy as np
 from datetime import datetime
-from fastapi import APIRouter, WebSocket, UploadFile, File, Response
+from fastapi import APIRouter, WebSocket, UploadFile, File, Response, Header, HTTPException
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 from loguru import logger
 from .service_context import ServiceContext
 from .websocket_handler import WebSocketHandler
 from .proxy_handler import ProxyHandler
+
+
+def _extract_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    prefix = "Bearer "
+    if not authorization.startswith(prefix):
+        return None
+    return authorization[len(prefix) :].strip()
+
+
+def _require_admin_token(
+    ws_handler: WebSocketHandler,
+    authorization: str | None,
+    x_admin_token: str | None,
+) -> None:
+    token = x_admin_token or _extract_bearer_token(authorization)
+    if not ws_handler.is_admin_token_valid(token):
+        raise HTTPException(status_code=403, detail="Invalid admin token")
 
 
 def init_client_ws_route(default_context_cache: ServiceContext) -> APIRouter:
@@ -25,6 +44,7 @@ def init_client_ws_route(default_context_cache: ServiceContext) -> APIRouter:
 
     router = APIRouter()
     ws_handler = WebSocketHandler(default_context_cache)
+    router.state.ws_handler = ws_handler
 
     @router.websocket("/client-ws")
     async def websocket_endpoint(websocket: WebSocket):
@@ -70,7 +90,9 @@ def init_proxy_route(server_url: str) -> APIRouter:
     return router
 
 
-def init_webtool_routes(default_context_cache: ServiceContext) -> APIRouter:
+def init_webtool_routes(
+    default_context_cache: ServiceContext, ws_handler: WebSocketHandler
+) -> APIRouter:
     """
     Create and return API routes for handling web tool interactions.
 
@@ -138,11 +160,42 @@ def init_webtool_routes(default_context_cache: ServiceContext) -> APIRouter:
             }
         )
 
+    @router.get("/runtime/mic-acceptance")
+    async def get_mic_acceptance(
+        authorization: str | None = Header(default=None),
+        x_admin_token: str | None = Header(default=None),
+    ):
+        _require_admin_token(ws_handler, authorization, x_admin_token)
+        return {"allow_mic_input": ws_handler.allow_mic_input}
+
+    @router.post("/runtime/mic-acceptance")
+    async def set_mic_acceptance(
+        payload: dict,
+        authorization: str | None = Header(default=None),
+        x_admin_token: str | None = Header(default=None),
+    ):
+        _require_admin_token(ws_handler, authorization, x_admin_token)
+        allow_mic_input = bool(payload.get("allow_mic_input", False))
+        ws_handler.set_mic_acceptance(allow_mic_input)
+        return {"ok": True, "allow_mic_input": ws_handler.allow_mic_input}
+
     @router.post("/asr")
     async def transcribe_audio(file: UploadFile = File(...)):
         """
         Endpoint for transcribing audio using the ASR engine
         """
+        if not ws_handler.allow_mic_input:
+            return Response(
+                content=json.dumps(
+                    {
+                        "error": "Mic input is currently disabled",
+                        "code": "MIC_INPUT_FORBIDDEN",
+                    }
+                ),
+                status_code=403,
+                media_type="application/json",
+            )
+
         logger.info(f"Received audio file for transcription: {file.filename}")
 
         try:

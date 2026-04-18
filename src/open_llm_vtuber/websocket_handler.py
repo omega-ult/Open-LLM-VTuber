@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Callable, TypedDict
 from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
 import json
+import os
 import time
 from enum import Enum
 import numpy as np
@@ -77,6 +78,13 @@ class WebSocketHandler:
         self.current_conversation_tasks: Dict[str, Optional[asyncio.Task]] = {}
         self.default_context_cache = default_context_cache
         self.received_data_buffers: Dict[str, np.ndarray] = {}
+        self.allow_mic_input: bool = os.getenv("OLV_ALLOW_MIC_INPUT", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        self._admin_token: Optional[str] = os.getenv("OLV_ADMIN_TOKEN")
         self._last_audio_play_client_uid: Optional[str] = None
         self._last_audio_play_ts: float = 0.0
 
@@ -105,6 +113,7 @@ class WebSocketHandler:
             "fetch-backgrounds": self._handle_fetch_backgrounds,
             "audio-play-start": self._handle_audio_play_start,
             "request-init-config": self._handle_init_config_request,
+            "set-mic-acceptance": self._handle_set_mic_acceptance,
             "heartbeat": self._handle_heartbeat,
         }
 
@@ -184,7 +193,8 @@ class WebSocketHandler:
         await self.send_group_update(websocket, client_uid)
 
         # Start microphone
-        await websocket.send_text(json.dumps({"type": "control", "text": "start-mic"}))
+        if self.allow_mic_input:
+            await websocket.send_text(json.dumps({"type": "control", "text": "start-mic"}))
 
     async def _init_service_context(
         self, send_text: Callable, client_uid: str
@@ -300,6 +310,34 @@ class WebSocketHandler:
             return uid
 
         return fallback_uid
+
+    def _is_admin_token_valid(self, token: Optional[str]) -> bool:
+        if not self._admin_token:
+            return False
+        return token == self._admin_token
+
+    def is_admin_token_valid(self, token: Optional[str]) -> bool:
+        return self._is_admin_token_valid(token)
+
+    async def _send_mic_rejected(self, websocket: WebSocket, reason: str) -> None:
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "type": "error",
+                    "code": "MIC_INPUT_FORBIDDEN",
+                    "message": reason,
+                }
+            )
+        )
+
+    def _clear_client_audio_buffer(self, client_uid: str) -> None:
+        self.received_data_buffers[client_uid] = np.array([])
+
+    def set_mic_acceptance(self, allow_mic_input: bool) -> None:
+        self.allow_mic_input = allow_mic_input
+        if not allow_mic_input:
+            for uid in list(self.received_data_buffers.keys()):
+                self._clear_client_audio_buffer(uid)
 
     async def _handle_group_operation(
         self, websocket: WebSocket, client_uid: str, data: dict
@@ -525,6 +563,11 @@ class WebSocketHandler:
         self, websocket: WebSocket, client_uid: str, data: WSMessage
     ) -> None:
         """Handle incoming audio data"""
+        if not self.allow_mic_input:
+            self._clear_client_audio_buffer(client_uid)
+            await self._send_mic_rejected(websocket, "Mic input is currently disabled")
+            return
+
         audio_data = data.get("audio", [])
         if audio_data:
             self.received_data_buffers[client_uid] = np.append(
@@ -536,6 +579,11 @@ class WebSocketHandler:
         self, websocket: WebSocket, client_uid: str, data: WSMessage
     ) -> None:
         """Handle incoming raw audio data for VAD processing"""
+        if not self.allow_mic_input:
+            self._clear_client_audio_buffer(client_uid)
+            await self._send_mic_rejected(websocket, "Mic input is currently disabled")
+            return
+
         context = self.client_contexts[client_uid]
         chunk = data.get("audio", [])
         if chunk:
@@ -560,8 +608,21 @@ class WebSocketHandler:
         self, websocket: WebSocket, client_uid: str, data: WSMessage
     ) -> None:
         """Handle triggers that start a conversation"""
+        msg_type = data.get("type", "")
+        if not self.allow_mic_input and msg_type in {
+            "mic-audio-end",
+            "text-input",
+            "ai-speak-signal",
+        }:
+            self._clear_client_audio_buffer(client_uid)
+            await self._send_mic_rejected(
+                websocket,
+                "Direct user input is currently disabled; inject input only",
+            )
+            return
+
         await handle_conversation_trigger(
-            msg_type=data.get("type", ""),
+            msg_type=msg_type,
             data=data,
             client_uid=client_uid,
             context=self.client_contexts[client_uid],
@@ -783,6 +844,37 @@ class WebSocketHandler:
                     "conf_name": context.character_config.conf_name,
                     "conf_uid": context.character_config.conf_uid,
                     "client_uid": client_uid,
+                }
+            )
+        )
+
+    async def _handle_set_mic_acceptance(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        payload = data.get("data") or {}
+        token = payload.get("admin_token")
+        if not self._is_admin_token_valid(token):
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "type": "error",
+                        "code": "UNAUTHORIZED",
+                        "message": "Invalid admin token",
+                    }
+                )
+            )
+            return
+
+        allow_mic_input = bool(payload.get("allow_mic_input", True))
+        self.set_mic_acceptance(allow_mic_input)
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "type": "set-mic-acceptance-result",
+                    "data": {
+                        "ok": True,
+                        "allow_mic_input": self.allow_mic_input,
+                    },
                 }
             )
         )
