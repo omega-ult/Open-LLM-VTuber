@@ -6,7 +6,7 @@ from loguru import logger
 
 
 class TTSInterface(metaclass=abc.ABCMeta):
-    async def async_generate_audio(self, text: str, file_name_no_ext=None) -> str:
+    async def async_generate_audio(self, text: str, file_name_no_ext=None, emotion: str = None) -> str:
         """
         Asynchronously generate speech audio file using TTS.
 
@@ -17,21 +17,25 @@ class TTSInterface(metaclass=abc.ABCMeta):
             the text to speak
         file_name_no_ext (optional and deprecated): str
             name of the file without file extension
+        emotion: str (optional)
+            emotion tag for TTS engine (e.g., "joy", "anger", "sadness")
 
         Returns:
         str: the path to the generated audio file
 
         """
-        return await asyncio.to_thread(self.generate_audio, text, file_name_no_ext)
+        return await asyncio.to_thread(self.generate_audio, text, file_name_no_ext, emotion)
 
     @abc.abstractmethod
-    def generate_audio(self, text: str, file_name_no_ext=None) -> str:
+    def generate_audio(self, text: str, file_name_no_ext=None, emotion: str = None) -> str:
         """
         Generate speech audio file using TTS.
         text: str
             the text to speak
         file_name_no_ext (optional and deprecated): str
             name of the file without file extension
+        emotion: str (optional)
+            emotion tag for TTS engine (e.g., "joy", "anger", "sadness")
 
         Returns:
         str: the path to the generated audio file

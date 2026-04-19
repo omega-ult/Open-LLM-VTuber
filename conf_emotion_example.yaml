@@ -1,0 +1,110 @@
+# Open-LLM-VTuber 配置文件 - 情绪语音增强版
+# 在原有配置基础上添加 emotion_voice_mapping
+
+# ... (保持原有配置不变)
+
+tts:
+  provider: "gpt_sovits_v2"
+
+  # GPT-SoVITS API 配置
+  api_url: "http://127.0.0.1:9880/tts"
+  text_lang: "zh"
+  ref_audio_path: "voices/neutral/calm.wav"  # 默认参考音频
+  prompt_text: "嗯。"
+  prompt_lang: "zh"
+  text_split_method: "cut5"
+  batch_size: "1"
+  media_type: "wav"
+  streaming_mode: "true"
+
+  # ── 情绪→参考音频映射（新增）────────────────
+  emotion_voice_mapping:
+    # 高兴
+    joy:
+      ref_audio_path: "voices/joy/high_energy.wav"
+      prompt_text: "太好了！"
+      tts_params:
+        speed_factor: 1.1
+        temperature: 0.7
+
+    # 愤怒
+    anger:
+      ref_audio_path: "voices/anger/hot_anger.wav"
+      prompt_text: "够了！"
+      tts_params:
+        speed_factor: 1.0
+        temperature: 0.8
+
+    # 悲伤
+    sadness:
+      ref_audio_path: "voices/sadness/deep_sadness.wav"
+      prompt_text: "唉..."
+      tts_params:
+        speed_factor: 0.9
+        temperature: 0.5
+
+    # 惊讶
+    surprise:
+      ref_audio_path: "voices/surprise/shock.wav"
+      prompt_text: "什么？！"
+      tts_params:
+        speed_factor: 1.2
+        temperature: 0.7
+
+    # 恐惧
+    fear:
+      ref_audio_path: "voices/fear/scared.wav"
+      prompt_text: "不要..."
+      tts_params:
+        speed_factor: 0.95
+        temperature: 0.6
+
+    # 厌恶
+    disgust:
+      ref_audio_path: "voices/disgust/repulsed.wav"
+      prompt_text: "呃"
+      tts_params:
+        speed_factor: 1.0
+        temperature: 0.65
+
+    # 中性（默认）
+    neutral:
+      ref_audio_path: "voices/neutral/calm.wav"
+      prompt_text: "嗯。"
+      tts_params:
+        speed_factor: 1.0
+        temperature: 0.6
+
+  # ── 复合情绪映射（可选，高级功能）────────────
+  compound_emotion_mapping:
+    # 悬疑 (fear + surprise)
+    suspense:
+      aux_ref_audio_paths:
+        - "voices/fear/base.wav"
+        - "voices/surprise/edge.wav"
+      prompt_text: "等等..."
+      tts_params:
+        speed_factor: 1.0
+        temperature: 0.65
+
+    # 懊恼 (anger + sadness)
+    frustration:
+      aux_ref_audio_paths:
+        - "voices/anger/cold.wav"
+        - "voices/sadness/soft.wav"
+      prompt_text: "唉..."
+      tts_params:
+        speed_factor: 0.95
+        temperature: 0.6
+
+    # 敬畏 (surprise + fear)
+    awe:
+      aux_ref_audio_paths:
+        - "voices/surprise/shock.wav"
+        - "voices/fear/awe.wav"
+      prompt_text: "天哪..."
+      tts_params:
+        speed_factor: 1.0
+        temperature: 0.7
+
+# ... (其余配置保持不变)

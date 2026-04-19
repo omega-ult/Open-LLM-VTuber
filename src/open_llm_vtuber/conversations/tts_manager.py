@@ -37,6 +37,7 @@ class TTSTaskManager:
         websocket_send: WebSocketSend,
         request_id: str | None = None,
         target_client_uid: str | None = None,
+        emotion: Optional[str] = None,  # 新增参数
     ) -> None:
         """
         Queue a TTS task while maintaining order of delivery.
@@ -48,6 +49,9 @@ class TTSTaskManager:
             live2d_model: Live2D model instance
             tts_engine: TTS engine instance
             websocket_send: WebSocket send function
+            request_id: Request ID for tracking
+            target_client_uid: Target client UID
+            emotion: Emotion tag for TTS engine (e.g., "joy", "anger")
         """
         if len(re.sub(r'[\s.,!?，。！？\'"』」）】\s]+', "", tts_text)) == 0:
             logger.debug("Empty TTS text, sending silent display payload")
@@ -95,6 +99,7 @@ class TTSTaskManager:
                 sequence_number=current_sequence,
                 request_id=request_id,
                 target_client_uid=target_client_uid,
+                emotion=emotion,  # 传递情绪
             )
         )
         self.task_list.append(task)
@@ -151,11 +156,12 @@ class TTSTaskManager:
         sequence_number: int,
         request_id: str | None = None,
         target_client_uid: str | None = None,
+        emotion: Optional[str] = None,  # 新增参数
     ) -> None:
         """Process TTS generation and queue the result for ordered delivery"""
         audio_file_path = None
         try:
-            audio_file_path = await self._generate_audio(tts_engine, tts_text)
+            audio_file_path = await self._generate_audio(tts_engine, tts_text, emotion)  # 传递情绪
             payload = prepare_audio_payload(
                 audio_path=audio_file_path,
                 display_text=display_text,
@@ -183,12 +189,15 @@ class TTSTaskManager:
                 tts_engine.remove_file(audio_file_path)
                 logger.debug("Audio cache file cleaned.")
 
-    async def _generate_audio(self, tts_engine: TTSInterface, text: str) -> str:
-        """Generate audio file from text"""
-        logger.debug(f"🏃Generating audio for '''{text}'''...")
+    async def _generate_audio(
+        self, tts_engine: TTSInterface, text: str, emotion: Optional[str] = None
+    ) -> str:
+        """Generate audio file from text with emotion"""
+        logger.debug(f"🏃Generating audio for '''{text}''' with emotion={emotion}...")
         return await tts_engine.async_generate_audio(
             text=text,
             file_name_no_ext=f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}",
+            emotion=emotion,  # 传递情绪
         )
 
     def clear(self) -> None:

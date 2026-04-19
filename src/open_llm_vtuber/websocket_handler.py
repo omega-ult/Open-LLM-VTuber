@@ -713,6 +713,10 @@ class WebSocketHandler:
             expression_list = context.live2d_model.extract_emotion(text)
             clean_text = context.live2d_model.remove_emotion_keywords(text)
 
+            # 提取情绪标签（优先级：emotion 字段 > 文本解析 > neutral）
+            emotion_from_field = data.get("emotion")  # 从 WebSocket payload 获取
+            emotion_tag = emotion_from_field or self._extract_emotion_from_text(text)
+
             # Build actions for Live2D
             actions = Actions(expressions=expression_list if expression_list else None, motion=motion)
 
@@ -733,6 +737,7 @@ class WebSocketHandler:
                 websocket_send=broadcast_send,
                 request_id=request_id,
                 target_client_uid=target_client_uid,
+                emotion=emotion_tag,  # 传递情绪到 TTS
             )
 
             # Wait for TTS completion
@@ -789,6 +794,12 @@ class WebSocketHandler:
             except Exception as send_err:
                 logger.warning(f"inject-ai-response-complete send failed: {send_err}")
             tts_manager.clear()
+
+    def _extract_emotion_from_text(self, text: str) -> str:
+        """从文本中提取情绪标签"""
+        import re
+        match = re.search(r"\[(\w+)\]", text)
+        return match.group(1).lower() if match else "neutral"
 
     async def _handle_fetch_configs(
         self, websocket: WebSocket, client_uid: str, data: WSMessage
