@@ -68,12 +68,23 @@ class MessageHandler:
 
         response_key = (msg_type, request_id)
 
+        # 先匹配发送者自己的 event
         if (
             client_uid in self._response_events
             and response_key in self._response_events[client_uid]
         ):
             self._response_data[client_uid][response_key] = message
             self._response_events[client_uid][response_key].set()
+            return
+
+        # 对于 playback-complete 等广播型消息，匹配任意等待该 (type, request_id) 的 client
+        # 这解决了 proxy 连接 inject 时，前端回传 complete 但 client_uid 不匹配的问题
+        if request_id:
+            for uid, events in self._response_events.items():
+                if uid != client_uid and response_key in events:
+                    self._response_data[uid][response_key] = message
+                    events[response_key].set()
+                    return
 
     def cleanup_client(self, client_uid: str) -> None:
         """

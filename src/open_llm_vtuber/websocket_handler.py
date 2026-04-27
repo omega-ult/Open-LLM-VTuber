@@ -86,6 +86,8 @@ class WebSocketHandler:
         )
         self._admin_token: Optional[str] = os.getenv("OLV_ADMIN_TOKEN")
         self._last_audio_play_client_uid: Optional[str] = None
+        # inject 请求来源 proxy 连接的映射: request_id -> proxy client_uid
+        self._inject_source_map: Dict[str, str] = {}
         self._last_audio_play_ts: float = 0.0
 
         # Message handlers mapping
@@ -276,9 +278,25 @@ class WebSocketHandler:
         handler = self._message_handlers.get(msg_type)
         if handler:
             await handler(websocket, client_uid, data)
+        elif msg_type == "frontend-playback-complete":
+            request_id = data.get("request_id")
+            if request_id and request_id in self._inject_source_map:
+                source_uid = self._inject_source_map.pop(request_id)
+                # 转发 complete 回 proxy 连接，让 LivOchestrator 收到
+                if source_uid in self.client_connections:
+                    try:
+                        await self.client_connections[source_uid].send_json(data)
+                        logger.debug(
+                            f"Forwarded playback-complete to proxy {source_uid} for request {request_id}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to forward playback-complete to proxy {source_uid}: {e}")
+                else:
+                    logger.warning(f"Proxy client {source_uid} not connected, cannot forward playback-complete")
+            else:
+                logger.debug(f"frontend-playback-complete with no matching inject: request_id={request_id}")
         else:
-            if msg_type != "frontend-playback-complete":
-                logger.warning(f"Unknown message type: {msg_type}")
+            logger.warning(f"Unknown message type: {msg_type}")
 
     def _resolve_target_client_uid(
         self,
@@ -683,8 +701,11 @@ class WebSocketHandler:
         )
         logger.info(
             f"inject-ai-response routing: request_id={request_id} "
-            f"requested_target={requested_target_uid or '-'} resolved_target={target_client_uid}"
+            f"requested_target={requested_target_uid or '-'} resolved_target={target_client_uid} "
+            f"source_client={client_uid}"
         )
+        # 记录 inject 来源 proxy 连接，用于将前端 playback-complete 转发回 proxy
+        self._inject_source_map[request_id] = client_uid
         if not text:
             logger.warning("inject-ai-response: empty text")
             return
@@ -773,7 +794,7 @@ class WebSocketHandler:
             await broadcast_send(json.dumps(chain_end_msg))
 
             response = await message_handler.wait_for_response(
-                target_client_uid,
+                client_uid,
                 "frontend-playback-complete",
                 request_id=request_id,
                 timeout=45.0,
@@ -803,6 +824,7 @@ class WebSocketHandler:
             except Exception as send_err:
                 logger.warning(f"inject-ai-response-complete send failed: {send_err}")
             tts_manager.clear()
+            self._inject_source_map.pop(request_id, None)
 
     def _extract_emotion_from_text(self, text: str) -> str:
         """从文本中提取情绪标签"""
