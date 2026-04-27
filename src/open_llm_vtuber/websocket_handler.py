@@ -280,34 +280,42 @@ class WebSocketHandler:
             if msg_type != "frontend-playback-complete":
                 logger.warning(f"Unknown message type: {msg_type}")
 
-    def _resolve_target_client_uid(self, requested_uid: Optional[str], fallback_uid: str) -> str:
+    def _resolve_target_client_uid(
+        self,
+        requested_uid: Optional[str],
+        fallback_uid: str,
+        exclude_uid: Optional[str] = None,
+    ) -> str:
         # If requester points to itself but we know a recent playback client, prefer playback client.
         if (
             requested_uid
             and requested_uid == fallback_uid
             and self._last_audio_play_client_uid
+            and self._last_audio_play_client_uid != exclude_uid
             and self._last_audio_play_client_uid in self.client_connections
         ):
             return self._last_audio_play_client_uid
 
         # Prefer explicitly requested online uid
-        if requested_uid and requested_uid in self.client_connections:
+        if requested_uid and requested_uid != exclude_uid and requested_uid in self.client_connections:
             return requested_uid
 
         # Prefer most recently active playback client
         if (
             self._last_audio_play_client_uid
+            and self._last_audio_play_client_uid != exclude_uid
             and self._last_audio_play_client_uid in self.client_connections
         ):
             return self._last_audio_play_client_uid
 
-        # Fallback to requester if online
-        if fallback_uid in self.client_connections:
+        # Fallback to requester if online (only if not excluded)
+        if fallback_uid != exclude_uid and fallback_uid in self.client_connections:
             return fallback_uid
 
-        # Last resort: any connected client
+        # Last resort: any connected client (excluding the caller)
         for uid in self.client_connections.keys():
-            return uid
+            if uid != exclude_uid:
+                return uid
 
         return fallback_uid
 
@@ -671,6 +679,7 @@ class WebSocketHandler:
         target_client_uid = self._resolve_target_client_uid(
             str(requested_target_uid) if requested_target_uid else None,
             fallback_uid=client_uid,
+            exclude_uid=client_uid,
         )
         logger.info(
             f"inject-ai-response routing: request_id={request_id} "
