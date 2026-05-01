@@ -38,6 +38,7 @@ class TTSTaskManager:
         request_id: str | None = None,
         target_client_uid: str | None = None,
         emotion: Optional[str] = None,  # 新增参数
+        vad: Optional[Dict] = None,
     ) -> None:
         """
         Queue a TTS task while maintaining order of delivery.
@@ -52,6 +53,7 @@ class TTSTaskManager:
             request_id: Request ID for tracking
             target_client_uid: Target client UID
             emotion: Emotion tag for TTS engine (e.g., "joy", "anger")
+            vad: VAD payload {valence, arousal, dominance, intensity} for continuous TTS modulation
         """
         if len(re.sub(r'[\s.,!?，。！？\'"』」）】\s]+', "", tts_text)) == 0:
             logger.debug("Empty TTS text, sending silent display payload")
@@ -100,6 +102,7 @@ class TTSTaskManager:
                 request_id=request_id,
                 target_client_uid=target_client_uid,
                 emotion=emotion,  # 传递情绪
+                vad=vad,
             )
         )
         self.task_list.append(task)
@@ -157,11 +160,12 @@ class TTSTaskManager:
         request_id: str | None = None,
         target_client_uid: str | None = None,
         emotion: Optional[str] = None,  # 新增参数
+        vad: Optional[Dict] = None,
     ) -> None:
         """Process TTS generation and queue the result for ordered delivery"""
         audio_file_path = None
         try:
-            audio_file_path = await self._generate_audio(tts_engine, tts_text, emotion)  # 传递情绪
+            audio_file_path = await self._generate_audio(tts_engine, tts_text, emotion, vad)  # 传递情绪 + VAD
             payload = prepare_audio_payload(
                 audio_path=audio_file_path,
                 display_text=display_text,
@@ -190,14 +194,19 @@ class TTSTaskManager:
                 logger.debug("Audio cache file cleaned.")
 
     async def _generate_audio(
-        self, tts_engine: TTSInterface, text: str, emotion: Optional[str] = None
+        self,
+        tts_engine: TTSInterface,
+        text: str,
+        emotion: Optional[str] = None,
+        vad: Optional[Dict] = None,
     ) -> str:
-        """Generate audio file from text with emotion"""
-        logger.debug(f"🏃Generating audio for '''{text}''' with emotion={emotion}...")
+        """Generate audio file from text with emotion and optional VAD modulation"""
+        logger.debug(f"🏃Generating audio for '''{text}''' with emotion={emotion} vad={vad}")
         return await tts_engine.async_generate_audio(
             text=text,
             file_name_no_ext=f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}",
             emotion=emotion,  # 传递情绪
+            vad=vad,
         )
 
     def clear(self) -> None:

@@ -6,7 +6,13 @@ from loguru import logger
 
 
 class TTSInterface(metaclass=abc.ABCMeta):
-    async def async_generate_audio(self, text: str, file_name_no_ext=None, emotion: str = None) -> str:
+    async def async_generate_audio(
+        self,
+        text: str,
+        file_name_no_ext=None,
+        emotion: str = None,
+        vad: dict = None,
+    ) -> str:
         """
         Asynchronously generate speech audio file using TTS.
 
@@ -19,12 +25,25 @@ class TTSInterface(metaclass=abc.ABCMeta):
             name of the file without file extension
         emotion: str (optional)
             emotion tag for TTS engine (e.g., "joy", "anger", "sadness")
+        vad: dict (optional)
+            VAD payload {valence, arousal, dominance, intensity} for continuous TTS modulation.
+            Engines that don't support vad (signature without the param) silently drop it.
 
         Returns:
         str: the path to the generated audio file
 
         """
-        return await asyncio.to_thread(self.generate_audio, text, file_name_no_ext, emotion)
+        import inspect
+
+        sig = inspect.signature(self.generate_audio)
+        kwargs = {}
+        if "vad" in sig.parameters:
+            kwargs["vad"] = vad
+
+        def _run():
+            return self.generate_audio(text, file_name_no_ext, emotion, **kwargs)
+
+        return await asyncio.to_thread(_run)
 
     @abc.abstractmethod
     def generate_audio(self, text: str, file_name_no_ext=None, emotion: str = None) -> str:

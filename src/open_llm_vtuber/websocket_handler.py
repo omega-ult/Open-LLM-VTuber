@@ -747,6 +747,9 @@ class WebSocketHandler:
             emotion_from_field = data.get("emotion")  # 从 WebSocket payload 获取
             emotion_tag = emotion_from_field or self._extract_emotion_from_text(text)
 
+            # 提取 VAD 连续值（用于 TTS 语速/随机度连续调制）
+            vad_payload = data.get("vad") if isinstance(data.get("vad"), dict) else None
+
             # Build actions for Live2D
             actions = Actions(expressions=expression_list if expression_list else None, motion=motion)
 
@@ -768,6 +771,7 @@ class WebSocketHandler:
                 request_id=request_id,
                 target_client_uid=target_client_uid,
                 emotion=emotion_tag,  # 传递情绪到 TTS
+                vad=vad_payload,
             )
 
             # Wait for TTS completion

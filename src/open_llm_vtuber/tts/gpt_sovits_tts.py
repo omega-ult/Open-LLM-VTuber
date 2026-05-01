@@ -41,7 +41,13 @@ class TTSEngine(TTSInterface):
         self.current_emotion = emotion
         logger.debug(f"[GPT-SoVITS] Emotion set to: {emotion}")
 
-    def generate_audio(self, text: str, file_name_no_ext=None, emotion: str = None):
+    def generate_audio(
+        self,
+        text: str,
+        file_name_no_ext=None,
+        emotion: str = None,
+        vad: dict = None,
+    ):
         """
         Generate audio with emotion support
 
@@ -49,6 +55,9 @@ class TTSEngine(TTSInterface):
             text: Text to synthesize (may contain emotion tags like [joy])
             file_name_no_ext: Optional file name
             emotion: Emotion tag from LivOchestrator (e.g., "joy", "anger", "[joy]", "[anger]")
+            vad: Optional dict {valence, arousal, dominance, intensity}.
+                When provided, speed/temperature are derived continuously from VAD,
+                overriding the static tts_params in emotion_voice_mapping.
         """
         file_name = self.generate_cache_file_name(file_name_no_ext, self.media_type)
 
@@ -76,7 +85,22 @@ class TTSEngine(TTSInterface):
         }
 
         # 添加 TTS 参数（speed, temperature 等）
-        tts_params = voice_config.get("tts_params", {})
+        tts_params = dict(voice_config.get("tts_params", {}))
+
+        # ── VAD 连续调制（覆盖静态 tts_params 里的 speed/temperature） ──
+        # arousal 主导语速，intensity 主导随机度
+        vad_log = ""
+        if isinstance(vad, dict):
+            arousal = float(vad.get("arousal", 0.0) or 0.0)
+            intensity = float(vad.get("intensity", 0.0) or 0.0)
+            arousal = max(0.0, min(1.0, arousal))
+            intensity = max(0.0, min(1.0, intensity))
+            vad_speed = round(0.85 + arousal * 0.40, 3)         # 0.85 → 1.25
+            vad_temperature = round(0.50 + intensity * 0.50, 3)  # 0.50 → 1.00
+            tts_params["speed"] = vad_speed
+            tts_params["temperature"] = vad_temperature
+            vad_log = f" vad_speed={vad_speed} vad_temp={vad_temperature} A={arousal:.2f} I={intensity:.2f}"
+
         data.update(tts_params)
 
         # 如果有辅助参考音频（复合情绪）
@@ -87,6 +111,7 @@ class TTSEngine(TTSInterface):
         log_msg = f"[GPT-SoVITS] emotion={active_emotion} text={cleaned_text[:50]}"
         if voice_config:
             log_msg += f" ref={data['refer_wav_path']}"
+        log_msg += vad_log
         logger.info(log_msg)
 
         # Send request to the TTS API
