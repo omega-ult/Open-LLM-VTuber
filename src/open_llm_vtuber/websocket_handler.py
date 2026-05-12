@@ -110,6 +110,8 @@ class WebSocketHandler:
             "text-input": self._handle_conversation_trigger,
             "ai-speak-signal": self._handle_conversation_trigger,
             "inject-ai-response": self._handle_inject_ai_response,
+            "inject-emotion-response": self._handle_inject_emotion_response,
+            "inject-motion-response": self._handle_inject_motion_response,
             "fetch-configs": self._handle_fetch_configs,
             "switch-config": self._handle_config_switch,
             "fetch-backgrounds": self._handle_fetch_backgrounds,
@@ -723,8 +725,14 @@ class WebSocketHandler:
             for uid in dead:
                 self.client_connections.pop(uid, None)
 
+        # Check if any non-proxy frontend client is connected.
+        # The proxy is the one sending inject-ai-response; if client_connections
+        # only contains the proxy itself, no frontend will send playback-complete.
+        _proxy_uid = client_uid
+        _has_frontend = any(uid != _proxy_uid for uid in self.client_connections)
+
         completion_status = "completed"
-        completion_source = "frontend-playback-complete"
+        completion_source = "frontend-playback-complete" if _has_frontend else "no-frontend-skip"
         completion_reason = ""
 
         try:
@@ -797,16 +805,24 @@ class WebSocketHandler:
             }
             await broadcast_send(json.dumps(chain_end_msg))
 
-            response = await message_handler.wait_for_response(
-                client_uid,
-                "frontend-playback-complete",
-                request_id=request_id,
-                timeout=45.0,
-            )
-            if not response:
-                completion_status = "timeout"
-                completion_source = "server-timeout"
-                completion_reason = "frontend-playback-complete timeout"
+            if _has_frontend:
+                response = await message_handler.wait_for_response(
+                    client_uid,
+                    "frontend-playback-complete",
+                    request_id=request_id,
+                    timeout=45.0,
+                )
+                if not response:
+                    completion_status = "timeout"
+                    completion_source = "server-timeout"
+                    completion_reason = "frontend-playback-complete timeout"
+            else:
+                logger.info(
+                    f"No frontend connected — skipping playback-complete wait "
+                    f"for request_id={request_id}"
+                )
+                completion_status = "completed"
+                completion_source = "no-frontend-skip"
 
         except Exception as e:
             completion_status = "error"
@@ -835,6 +851,100 @@ class WebSocketHandler:
         import re
         match = re.search(r"\[(\w+)\]", text)
         return match.group(1).lower() if match else "neutral"
+
+    async def _handle_inject_emotion_response(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        """Handle emotion-only update from LivOchestrator.
+        Updates Live2D expression without triggering TTS.
+        """
+        token = data.get("admin_token")
+        if not self._is_admin_token_valid(token):
+            await websocket.send_text(
+                json.dumps({
+                    "type": "error", "code": "UNAUTHORIZED",
+                    "message": "Invalid admin token for inject-emotion-response",
+                })
+            )
+            return
+
+        context = self.client_contexts.get(client_uid)
+        if not context:
+            return
+
+        emotion_tag = str(data.get("emotion", "neutral")).strip().lower()
+        if not emotion_tag:
+            return
+
+        request_id = str(
+            data.get("request_id")
+            or f"emotion-{client_uid}-{int(asyncio.get_running_loop().time() * 1000)}"
+        )
+
+        expression_list = context.live2d_model.extract_emotion(emotion_tag)
+
+        async def broadcast_send(message: str):
+            dead = []
+            for uid, ws in list(self.client_connections.items()):
+                try:
+                    await ws.send_text(message)
+                except Exception:
+                    dead.append(uid)
+            for uid in dead:
+                self.client_connections.pop(uid, None)
+
+        payload = {
+            "type": "audio",
+            "audio": None,
+            "actions": {"expressions": expression_list} if expression_list else None,
+            "request_id": request_id,
+        }
+        await broadcast_send(json.dumps(payload))
+        logger.info(f"inject-emotion-response: emotion={emotion_tag} request_id={request_id}")
+
+    async def _handle_inject_motion_response(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        """Handle motion-only update from LivOchestrator.
+        Triggers Live2D motion without triggering TTS.
+        """
+        token = data.get("admin_token")
+        if not self._is_admin_token_valid(token):
+            await websocket.send_text(
+                json.dumps({
+                    "type": "error", "code": "UNAUTHORIZED",
+                    "message": "Invalid admin token for inject-motion-response",
+                })
+            )
+            return
+
+        motion = data.get("motion")
+        if not motion:
+            return
+
+        request_id = str(
+            data.get("request_id")
+            or f"motion-{client_uid}-{int(asyncio.get_running_loop().time() * 1000)}"
+        )
+
+        async def broadcast_send(message: str):
+            dead = []
+            for uid, ws in list(self.client_connections.items()):
+                try:
+                    await ws.send_text(message)
+                except Exception:
+                    dead.append(uid)
+            for uid in dead:
+                self.client_connections.pop(uid, None)
+
+        payload = {
+            "type": "audio",
+            "audio": None,
+            "actions": {"motion": motion},
+            "request_id": request_id,
+        }
+        await broadcast_send(json.dumps(payload))
+        logger.info(f"inject-motion-response: motion={motion} request_id={request_id}")
 
     async def _handle_fetch_configs(
         self, websocket: WebSocket, client_uid: str, data: WSMessage
